@@ -106,9 +106,10 @@ func updateDeploymentSpec(
 		return http.StatusNotFound, findDeployErr
 	}
 
-	if err := isAnonymous(request.Image); err != nil {
-		return http.StatusBadRequest, err
-	}
+	// weew12 屏蔽校验私有镜像的逻辑
+	// if err := isAnonymous(request.Image); err != nil {
+	// 	return http.StatusBadRequest, err
+	// }
 
 	if len(deployment.Spec.Template.Spec.Containers) > 0 {
 		deployment.Spec.Template.Spec.Containers[0].Image = request.Image
