@@ -72,8 +72,9 @@ func MakeDeployHandler(functionNamespace string, factory k8s.FunctionFactory, fu
 			http.Error(w, wrappedErr.Error(), http.StatusBadRequest)
 			return
 		}
-		
+
 		// weew12 屏蔽校验私有镜像的逻辑
+		
 		// if err := isAnonymous(request.Image); err != nil {
 		// 	http.Error(w, err.Error(), http.StatusBadRequest)
 		// 	return

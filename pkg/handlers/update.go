@@ -107,6 +107,7 @@ func updateDeploymentSpec(
 	}
 
 	// weew12 屏蔽校验私有镜像的逻辑
+	
 	// if err := isAnonymous(request.Image); err != nil {
 	// 	return http.StatusBadRequest, err
 	// }
