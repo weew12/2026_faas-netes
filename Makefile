@@ -1,165 +1,62 @@
-.PHONY: local publish-buildx publish-buildx-all namespaces install charts start-kind stop-kind build-buildx build-buildx-all render-charts verify-charts verify-chart charts-only bump-charts
+IMG_NAME ?= faas-netes
 
-IMG_NAME?=faas-netes
+VERBOSE ?= true
 
-VERBOSE?=false
-
-TAG?=latest
-OWNER?=openfaas
-SERVER?=ttl.sh
-export DOCKER_CLI_EXPERIMENTAL=enabled
-export DOCKER_BUILDKIT=1
+TAG ?= v1
+OWNER ?= weew12
+SERVER ?= 172.16.2.106:5000
+export DOCKER_CLI_EXPERIMENTAL = enabled
+export DOCKER_BUILDKIT = 1
 
 VERSION := $(shell git describe --tags --dirty --always)
 GIT_COMMIT := $(shell git rev-parse HEAD)
 
-all: build-docker
+BUILDER_NAME ?= multiarch
+BUILDKIT_CONFIG ?= ./docker_buildx_config/buildkitd.toml
+PLATFORMS ?= linux/amd64,linux/arm/v7,linux/arm64
 
-local:
-	CGO_ENABLED=0 GOOS=linux go build -o faas-netes
+# ANSI colors
+RESET  := \033[0m
+BOLD   := \033[1m
+RED    := \033[31m
+GREEN  := \033[32m
+YELLOW := \033[33m
+BLUE   := \033[34m
+MAGENTA:= \033[35m
+CYAN   := \033[36m
 
-
-build-docker:
-	docker build \
-	--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-	--build-arg VERSION=$(VERSION) \
-	-t $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) .
-
-.PHONY: build-buildx
-build-buildx:
-	@echo $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) && \
-	docker buildx create --use --name=multiarch --node=multiarch && \
-	docker buildx build \
-		--output "type=image,push=false" \
-		--platform linux/amd64 \
-        --build-arg GIT_COMMIT=$(GIT_COMMIT) \
-        --build-arg VERSION=$(VERSION) \
-		--tag $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) \
-		.
-
-.PHONY: build-buildx-all
-build-buildx-all:
-	@docker buildx create --use --name=multiarch --node=multiarch && \
-	docker buildx build \
-		--platform linux/amd64,linux/arm/v7,linux/arm64 \
-		--output "type=image,push=false" \
-        --build-arg GIT_COMMIT=$(GIT_COMMIT) \
-        --build-arg VERSION=$(VERSION) \
-		--tag $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) \
-		.
+.PHONY: buildx-prepare
+buildx-prepare:
+	@printf "$(BLUE)$(BOLD)==> step 1/5: install qemu/binfmt for cross-platform builds$(RESET)\n"
+	@docker run --privileged --rm tonistiigi/binfmt --install all
+	@printf "$(BLUE)$(BOLD)==> step 2/5: remove old builder if exists$(RESET)\n"
+	@docker buildx rm $(BUILDER_NAME) 2>/dev/null || true
+	@printf "$(BLUE)$(BOLD)==> step 3/5: create buildx builder$(RESET) $(CYAN)$(BUILDER_NAME)$(RESET)\n"
+	@printf "$(YELLOW)    config: $(BUILDKIT_CONFIG)$(RESET)\n"
+	@docker buildx create \
+		--name $(BUILDER_NAME) \
+		--driver docker-container \
+		--buildkitd-config $(BUILDKIT_CONFIG) \
+		--use
+	@printf "$(BLUE)$(BOLD)==> step 4/5: bootstrap builder$(RESET) $(CYAN)$(BUILDER_NAME)$(RESET)\n"
+	@docker buildx inspect $(BUILDER_NAME) --bootstrap
+	@printf "$(BLUE)$(BOLD)==> step 5/5: supported platforms for$(RESET) $(CYAN)$(BUILDER_NAME)$(RESET)\n"
+	@docker buildx inspect $(BUILDER_NAME) --bootstrap | sed -n '/Platforms:/p'
+	@printf "$(GREEN)$(BOLD)==> builder ready: $(BUILDER_NAME)$(RESET)\n"
 
 .PHONY: publish-buildx-all
-publish-buildx-all:
-	@echo  $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) && \
-	docker buildx create --use --name=multiarch --node=multiarch && \
-	docker buildx build \
-		--platform linux/amd64,linux/arm/v7,linux/arm64 \
-		--push=true \
-        --build-arg GIT_COMMIT=$(GIT_COMMIT) \
-        --build-arg VERSION=$(VERSION) \
+publish-buildx-all: buildx-prepare
+	@printf "$(MAGENTA)$(BOLD)==> publish image$(RESET)\n"
+	@printf "$(YELLOW)    image: $(CYAN)$(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG)$(RESET)\n"
+	@printf "$(YELLOW)    platforms: $(CYAN)$(PLATFORMS)$(RESET)\n"
+	@printf "$(YELLOW)    version: $(CYAN)$(VERSION)$(RESET)\n"
+	@printf "$(YELLOW)    git commit: $(CYAN)$(GIT_COMMIT)$(RESET)\n"
+	@docker buildx build \
+		--builder $(BUILDER_NAME) \
+		--platform $(PLATFORMS) \
+		--push \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg VERSION=$(VERSION) \
 		--tag $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) \
 		.
-
-.PHONY: publish-buildx
-publish-buildx:
-	@echo  $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) && \
-	docker buildx create --use --name=multiarch --node=multiarch && \
-	docker buildx build \
-		--platform linux/amd64 \
-		--push=true \
-        --build-arg GIT_COMMIT=$(GIT_COMMIT) \
-        --build-arg VERSION=$(VERSION) \
-		--tag $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG) \
-		.
-
-charts: verify-charts charts-only
-
-verify-charts:
-	@echo Verifying helm charts images in remote registries && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/openfaas/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/kafka-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/cron-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/nats-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/mqtt-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/pro-builder/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/sqs-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/postgres-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/queue-worker/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/sns-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/rabbitmq-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/gcp-pubsub-connector/values.yaml && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/headroom-controller/values.yaml
-
-verify-chart:
-	@echo Verifying helm chart images in remote registries && \
-	arkade chart verify --verbose=$(VERBOSE) -f ./chart/openfaas/values.yaml
-
-# Only upgrade the openfaas chart, for speed
-upgrade-chart:
-	@echo Upgrading openfaas helm chart images && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/openfaas/values.yaml
-
-upgrade-charts:
-	@echo Upgrading images for all helm charts && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/openfaas/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/kafka-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/cron-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/nats-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/mqtt-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/pro-builder/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/sqs-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/postgres-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/queue-worker/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/sns-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/rabbitmq-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/gcp-pubsub-connector/values.yaml && \
-	arkade chart upgrade --verbose=$(VERBOSE) -w -f ./chart/headroom-controller/values.yaml
-
-bump-charts:
-	arkade chart bump --file ./chart/openfaas/Chart.yaml -w && \
-	arkade chart bump --file ./chart/kafka-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/cron-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/nats-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/mqtt-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/pro-builder/Chart.yaml -w && \
-	arkade chart bump --file ./chart/sqs-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/postgres-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/queue-worker/Chart.yaml -w && \
-	arkade chart bump --file ./chart/sns-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/rabbitmq-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/gcp-pubsub-connector/Chart.yaml -w && \
-	arkade chart bump --file ./chart/headroom-controller/Chart.yaml -w
-
-charts-only:
-	@cd chart && \
-		helm package openfaas/ && \
-		helm package kafka-connector/ && \
-		helm package cron-connector/ && \
-		helm package nats-connector/ && \
-		helm package mqtt-connector/ && \
-		helm package pro-builder/ && \
-		helm package sqs-connector/ && \
-		helm package postgres-connector/ && \
-		helm package queue-worker/ && \
-		helm package sns-connector/ && \
-		helm package rabbitmq-connector/ && \
-		helm package gcp-pubsub-connector/ && \
-		helm package headroom-controller/
-
-	mv chart/*.tgz docs/
-	helm repo index docs --url https://openfaas.github.io/faas-netes/ --merge ./docs/index.yaml
-
-
-start-kind: ## attempt to start a new dev environment
-	@./contrib/create_dev.sh
-
-stop-kind: ## attempt to stop the dev environment
-	@./contrib/stop_dev.sh
-
-.PHONY: verify-codegen
-verify-codegen:
-	./hack/verify-codegen.sh
-
-.PHONY: update-codegen
-update-codegen:
-	./hack/update-codegen.sh
+	@printf "$(GREEN)$(BOLD)==> publish done: $(SERVER)/$(OWNER)/$(IMG_NAME):$(TAG)$(RESET)\n"
