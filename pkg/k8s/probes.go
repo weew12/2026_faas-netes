@@ -11,16 +11,18 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// FunctionProbes 函数健康检查配置，包含存活检查与就绪检查
 type FunctionProbes struct {
 	Liveness  *corev1.Probe
 	Readiness *corev1.Probe
 }
 
-// MakeProbes returns the liveness and readiness probes
-// by default the health check runs `cat /tmp/.lock` every ten seconds
+// MakeProbes 创建并返回函数的存活检查和就绪检查配置
+// 默认健康检查使用 cat /tmp/.lock 命令，每10秒执行一次
 func (f *FunctionFactory) MakeProbes(r types.FunctionDeployment) (*FunctionProbes, error) {
 	var handler corev1.ProbeHandler
 
+	// 根据配置选择 HTTP 健康检查 或 文件检查
 	if f.Config.HTTPProbe {
 		handler = corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
@@ -41,6 +43,7 @@ func (f *FunctionFactory) MakeProbes(r types.FunctionDeployment) (*FunctionProbe
 	}
 
 	probes := FunctionProbes{}
+	// 配置就绪检查
 	probes.Readiness = &corev1.Probe{
 		ProbeHandler:        handler,
 		InitialDelaySeconds: f.Config.ReadinessProbe.InitialDelaySeconds,
@@ -50,6 +53,7 @@ func (f *FunctionFactory) MakeProbes(r types.FunctionDeployment) (*FunctionProbe
 		FailureThreshold:    3,
 	}
 
+	// 配置存活检查
 	probes.Liveness = &corev1.Probe{
 		ProbeHandler:        handler,
 		InitialDelaySeconds: f.Config.LivenessProbe.InitialDelaySeconds,

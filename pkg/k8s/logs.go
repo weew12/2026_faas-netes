@@ -23,36 +23,35 @@ import (
 )
 
 const (
-	// podInformerResync is the period between cache syncs in the pod informer
+	// podInformerResync Pod 监听器缓存同步周期
 	podInformerResync = 5 * time.Second
 
-	// defaultLogSince is the fallback log stream history
+	// defaultLogSince 默认日志回溯时间
 	defaultLogSince = 5 * time.Minute
 
-	// LogBufferSize number of log messages that may be buffered
+	// LogBufferSize 日志缓冲区大小
 	LogBufferSize = 500 * 2
 )
 
-// Log is the object which will be used together with the template to generate
-// the output.
+// Log 日志结构体，用于输出格式化日志
 type Log struct {
-	// Text is the log message itself
+	// Text 日志内容
 	Text string `json:"text"`
 
-	// Namespace of the pod
+	// Namespace 命名空间
 	Namespace string `json:"namespace"`
 
-	// PodName of the instance
+	// PodName Pod 实例名称
 	PodName string `json:"podName"`
 
-	// FunctionName of the pod
+	// FunctionName 函数名称
 	FunctionName string `json:"FunctionName"`
 
-	// Timestamp of the message
+	// Timestamp 日志时间戳
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// GetLogs returns a channel of logs for the given function
+// GetLogs 获取指定函数的日志通道
 func GetLogs(ctx context.Context, client kubernetes.Interface, functionName, namespace string, tail int64, since *time.Time, follow bool) (<-chan Log, error) {
 	added, err := startFunctionPodInformer(ctx, client, functionName, namespace)
 	if err != nil {
@@ -88,7 +87,7 @@ func GetLogs(ctx context.Context, client kubernetes.Interface, functionName, nam
 	return logs, nil
 }
 
-// podLogs returns a stream of logs lines from the specified pod
+// podLogs 从指定 Pod 中流式读取日志
 func podLogs(ctx context.Context, i v1.PodInterface, pod, container, namespace string, tail int64, since *time.Time, follow bool, dst chan<- Log) error {
 	log.Printf("Logger: starting log stream for %s\n", pod)
 	defer log.Printf("Logger: stopping log stream for %s\n", pod)
@@ -138,8 +137,8 @@ func podLogs(ctx context.Context, i v1.PodInterface, pod, container, namespace s
 	}
 }
 
+// extractTimestampAndMsg 从日志行中解析时间戳和内容
 func extractTimestampAndMsg(logText string) (string, time.Time) {
-	// first 32 characters is the k8s timestamp
 	parts := strings.SplitN(logText, " ", 2)
 	ts, err := time.Parse(time.RFC3339Nano, parts[0])
 	if err != nil {
@@ -154,7 +153,7 @@ func extractTimestampAndMsg(logText string) (string, time.Time) {
 	return "", ts
 }
 
-// parseSince returns the time.Duration of the requested Since value _or_ 5 minutes
+// parseSince 解析日志回溯时间，默认 5 分钟
 func parseSince(r *time.Time) *int64 {
 	var since int64
 	if r == nil || r.IsZero() {
@@ -165,8 +164,7 @@ func parseSince(r *time.Time) *int64 {
 	return &since
 }
 
-// startFunctionPodInformer will gather the list of existing Pods for the function, it will then watch
-// and watch for newly added or deleted function instances.
+// startFunctionPodInformer 启动函数 Pod 监听器，监听新增/删除事件
 func startFunctionPodInformer(ctx context.Context, client kubernetes.Interface, functionName, namespace string) (<-chan string, error) {
 	functionSelector := &metav1.LabelSelector{
 		MatchLabels: map[string]string{"faas_function": functionName},
@@ -200,13 +198,11 @@ func startFunctionPodInformer(ctx context.Context, client kubernetes.Interface, 
 		return nil, err
 	}
 
-	// prepare channel with enough space for the current instance set
 	added := make(chan string, len(pods))
 	podInformer.Informer().AddEventHandler(&podLoggerEventHandler{
 		added: added,
 	})
 
-	// will add existing pods to the chan and then listen for any new pods
 	go podInformer.Informer().Run(ctx.Done())
 	go func() {
 		<-ctx.Done()
@@ -216,31 +212,31 @@ func startFunctionPodInformer(ctx context.Context, client kubernetes.Interface, 
 	return added, nil
 }
 
+// withLabels 设置标签选择器过滤 Pod
 func withLabels(selector string) internalinterfaces.TweakListOptionsFunc {
 	return func(opts *metav1.ListOptions) {
 		opts.LabelSelector = selector
 	}
 }
 
+// podLoggerEventHandler Pod 事件处理器
 type podLoggerEventHandler struct {
 	cache.ResourceEventHandler
 	added   chan<- string
 	deleted chan<- string
 }
 
+// OnAdd Pod 新增时发送名称到通道
 func (h *podLoggerEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
 	pod := obj.(*corev1.Pod)
 	log.Printf("PodInformer: adding instance: %s", pod.Name)
 	h.added <- pod.Name
 }
 
+// OnUpdate 空实现，日志无需处理更新事件
 func (h *podLoggerEventHandler) OnUpdate(oldObj, newObj interface{}) {
-	// purposefully empty, we don't need to do anything for logs on update
 }
 
+// OnDelete 空实现，日志流会自动关闭
 func (h *podLoggerEventHandler) OnDelete(obj interface{}) {
-	// this may not be needed, the log stream Reader _should_ close on its own without
-	// us needing to watch and close it
-	// pod := obj.(*corev1.Pod)
-	// h.deleted <- pod.Name
 }

@@ -7,9 +7,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// removeVolume returns a Volume slice with any volumes matching volumeName removed.
-// Uses the filter without allocation technique
-// https://github.com/golang/go/wiki/SliceTricks#filtering-without-allocating
+// removeVolume 从 Volume 切片中移除指定名称的卷
+// 使用无内存分配过滤算法，高效且无额外开销
 func removeVolume(volumeName string, volumes []corev1.Volume) []corev1.Volume {
 	if volumes == nil {
 		return []corev1.Volume{}
@@ -25,9 +24,8 @@ func removeVolume(volumeName string, volumes []corev1.Volume) []corev1.Volume {
 	return newVolumes
 }
 
-// removeVolumeMount returns a VolumeMount slice with any mounts matching volumeName removed
-// Uses the filter without allocation technique
-// https://github.com/golang/go/wiki/SliceTricks#filtering-without-allocating
+// removeVolumeMount 从 VolumeMount 切片中移除指定名称的挂载项
+// 使用无内存分配过滤算法，高效且无额外开销
 func removeVolumeMount(volumeName string, mounts []corev1.VolumeMount) []corev1.VolumeMount {
 	if mounts == nil {
 		return []corev1.VolumeMount{}

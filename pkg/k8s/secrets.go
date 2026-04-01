@@ -20,53 +20,50 @@ import (
 )
 
 const (
-	secretsMountPath             = "/var/openfaas/secrets"
-	secretLabel                  = "app.kubernetes.io/managed-by"
-	secretLabelValue             = "openfaas"
+	// secretsMountPath 密钥挂载路径
+	secretsMountPath = "/var/openfaas/secrets"
+	// secretLabel 用于标识 OpenFaaS 托管密钥的标签
+	secretLabel = "app.kubernetes.io/managed-by"
+	// secretLabelValue 标签值
+	secretLabelValue = "openfaas"
+	// secretsProjectVolumeNameTmpl 投影卷名称模板
 	secretsProjectVolumeNameTmpl = "%s-projected-secrets"
 )
 
-// SecretsClient exposes the standardized CRUD behaviors for Kubernetes secrets.  These methods
-// will ensure that the secrets are structured and labelled correctly for use by the OpenFaaS system.
+// SecretsClient 定义 Kubernetes 密钥的标准化 CRUD 接口
+// 确保密钥格式和标签符合 OpenFaaS 使用规范
 type SecretsClient interface {
-	// List returns a list of available function secrets.  Only the names are returned
-	// to ensure we do not accidentally read or print the sensitive values during
-	// read operations.
+	// List 返回可用的函数密钥名称列表（不返回敏感值）
 	List(namespace string) (names []string, err error)
-	// Create adds a new secret, with the appropriate labels and structure to be
-	// used as a function secret.
+	// Create 创建新的函数密钥
 	Create(secret types.Secret) error
-	// Replace updates the value of a function secret
+	// Replace 更新函数密钥的值
 	Replace(secret types.Secret) error
-	// Delete removes a function secret
+	// Delete 删除函数密钥
 	Delete(name string, namespace string) error
-	// GetSecrets queries Kubernetes for a list of secrets by name in the given k8s namespace.
-	// This should only be used if you need access to the actual secret structure/value. Specifically,
-	// inside the FunctionFactory.
+	// GetSecrets 根据名称批量查询密钥详情
 	GetSecrets(namespace string, secretNames []string) (map[string]*apiv1.Secret, error)
 }
 
-// SecretInterfacer exposes the SecretInterface getter for the k8s client.
-// This is implemented by the CoreV1Interface() interface in the Kubernetes client.
-// The SecretsClient only needs this one interface, but needs to be able to set the
-// namespaces when the interface is instantiated, meaning, we need the Getter and not the
-// SecretInterface itself.
+// SecretInterfacer 暴露获取 SecretInterface 的方法
+// 用于在指定命名空间下操作密钥
 type SecretInterfacer interface {
-	// Secrets returns a SecretInterface scoped to the specified namespace
 	Secrets(namespace string) typedV1.SecretInterface
 }
 
+// secretClient SecretsClient 的 Kubernetes 实现
 type secretClient struct {
 	kube SecretInterfacer
 }
 
-// NewSecretsClient constructs a new SecretsClient using the provided Kubernetes client.
+// NewSecretsClient 创建 SecretsClient 实例
 func NewSecretsClient(kube kubernetes.Interface) SecretsClient {
 	return &secretClient{
 		kube: kube.CoreV1(),
 	}
 }
 
+// List 列出指定命名空间下由 OpenFaaS 管理的所有密钥名称
 func (c secretClient) List(namespace string) (names []string, err error) {
 	res, err := c.kube.Secrets(namespace).List(context.TODO(), c.selector())
 	if err != nil {
@@ -76,12 +73,12 @@ func (c secretClient) List(namespace string) (names []string, err error) {
 
 	names = make([]string, len(res.Items))
 	for idx, item := range res.Items {
-		// this is safe because size of names matches res.Items exactly
 		names[idx] = item.Name
 	}
 	return names, nil
 }
 
+// Create 创建带正确标签和结构的函数密钥
 func (c secretClient) Create(secret types.Secret) error {
 	err := c.validateSecret(secret)
 	if err != nil {
@@ -112,6 +109,7 @@ func (c secretClient) Create(secret types.Secret) error {
 	return nil
 }
 
+// Replace 覆盖更新已存在的函数密钥
 func (c secretClient) Replace(secret types.Secret) error {
 	err := c.validateSecret(secret)
 	if err != nil {
@@ -136,6 +134,7 @@ func (c secretClient) Replace(secret types.Secret) error {
 	return nil
 }
 
+// Delete 删除指定的函数密钥
 func (c secretClient) Delete(namespace string, name string) error {
 	err := c.kube.Secrets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil {
@@ -144,6 +143,7 @@ func (c secretClient) Delete(namespace string, name string) error {
 	return err
 }
 
+// GetSecrets 批量获取密钥对象
 func (c secretClient) GetSecrets(namespace string, secretNames []string) (map[string]*apiv1.Secret, error) {
 	kube := c.kube.Secrets(namespace)
 	opts := metav1.GetOptions{}
@@ -160,12 +160,14 @@ func (c secretClient) GetSecrets(namespace string, secretNames []string) (map[st
 	return secrets, nil
 }
 
+// selector 生成标签选择器，只筛选 OpenFaaS 管理的密钥
 func (c secretClient) selector() metav1.ListOptions {
 	return metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", secretLabel, secretLabelValue),
 	}
 }
 
+// validateSecret 校验密钥的名称和命名空间非空
 func (c secretClient) validateSecret(secret types.Secret) error {
 	if strings.TrimSpace(secret.Namespace) == "" {
 		return errors.New("namespace may not be empty")
@@ -178,6 +180,7 @@ func (c secretClient) validateSecret(secret types.Secret) error {
 	return nil
 }
 
+// getValidSecretData 统一处理密钥值，优先使用 RawValue
 func (c secretClient) getValidSecretData(secret types.Secret) map[string][]byte {
 
 	if len(secret.RawValue) > 0 {
@@ -192,12 +195,9 @@ func (c secretClient) getValidSecretData(secret types.Secret) map[string][]byte 
 
 }
 
-// ConfigureSecrets will update the Deployment spec to include secrets that have been deployed
-// in the kubernetes cluster.  For each requested secret, we inspect the type and add it to the
-// deployment spec as appropriate: secrets with type `SecretTypeDockercfg/SecretTypeDockerjson`
-// are added as ImagePullSecrets all other secrets are mounted as files in the deployments containers.
+// ConfigureSecrets 为 Deployment 配置密钥挂载和镜像拉取密钥
+// 区分 Docker 密钥和普通文件密钥
 func (f *FunctionFactory) ConfigureSecrets(request types.FunctionDeployment, deployment *appsv1.Deployment, existingSecrets map[string]*apiv1.Secret) error {
-	// Add / reference pre-existing secrets within Kubernetes
 	secretVolumeProjections := []apiv1.VolumeProjection{}
 
 	for _, secretName := range request.Secrets {
@@ -243,15 +243,12 @@ func (f *FunctionFactory) ConfigureSecrets(request types.FunctionDeployment, dep
 		},
 	}
 
-	// remove the existing secrets volume, if we can find it. The update volume will be
-	// added below
 	existingVolumes := removeVolume(volumeName, deployment.Spec.Template.Spec.Volumes)
 	deployment.Spec.Template.Spec.Volumes = existingVolumes
 	if len(secretVolumeProjections) > 0 {
 		deployment.Spec.Template.Spec.Volumes = append(existingVolumes, projectedSecrets)
 	}
 
-	// add mount secret as a file
 	updatedContainers := []apiv1.Container{}
 	for _, container := range deployment.Spec.Template.Spec.Containers {
 		mount := apiv1.VolumeMount{
@@ -260,7 +257,6 @@ func (f *FunctionFactory) ConfigureSecrets(request types.FunctionDeployment, dep
 			MountPath: secretsMountPath,
 		}
 
-		// remove the existing secrets volume mount, if we can find it. We update it later.
 		container.VolumeMounts = removeVolumeMount(volumeName, container.VolumeMounts)
 		if len(secretVolumeProjections) > 0 {
 			container.VolumeMounts = append(container.VolumeMounts, mount)
@@ -274,7 +270,8 @@ func (f *FunctionFactory) ConfigureSecrets(request types.FunctionDeployment, dep
 	return nil
 }
 
-// ReadFunctionSecretsSpec parses the name of the required function secrets. This is the inverse of ConfigureSecrets.
+// ReadFunctionSecretsSpec 从 Deployment 中解析出函数使用的密钥名称
+// 是 ConfigureSecrets 的逆操作
 func ReadFunctionSecretsSpec(item appsv1.Deployment) []string {
 	secrets := []string{}
 

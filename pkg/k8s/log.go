@@ -12,13 +12,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// LogRequestor implements the Requestor interface for k8s
+// LogRequestor Kubernetes 日志获取实现，满足 logs.Requestor 接口
 type LogRequestor struct {
 	client            kubernetes.Interface
 	functionNamespace string
 }
 
-// NewLogRequestor returns a new logs.Requestor that uses kail to select and follow pod logs
+// NewLogRequestor 创建 Kubernetes 日志请求器实例
 func NewLogRequestor(client kubernetes.Interface, functionNamespace string) *LogRequestor {
 	return &LogRequestor{
 		client:            client,
@@ -26,9 +26,8 @@ func NewLogRequestor(client kubernetes.Interface, functionNamespace string) *Log
 	}
 }
 
-// Query implements the actual Swarm logs request logic for the Requestor interface
-// This implementation ignores the r.Limit value because the OF-Provider already handles server side
-// line limits.
+// Query 实现日志查询接口，获取函数 Pod 日志
+// 忽略 Limit 参数，由上层 OpenFaaS Provider 控制行数限制
 func (l LogRequestor) Query(ctx context.Context, r logs.Request) (<-chan logs.Message, error) {
 	ns := l.functionNamespace
 
@@ -45,8 +44,7 @@ func (l LogRequestor) Query(ctx context.Context, r logs.Request) (<-chan logs.Me
 	msgStream := make(chan logs.Message, LogBufferSize)
 	go func() {
 		defer close(msgStream)
-		// here we depend on the fact that logStream will close when the context is cancelled,
-		// this ensures that the go routine will resolve
+		// 上下文取消时 logStream 会关闭，确保协程退出
 		for msg := range logStream {
 			msgStream <- logs.Message{
 				Timestamp: msg.Timestamp,

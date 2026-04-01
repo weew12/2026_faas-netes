@@ -7,8 +7,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-// isNotFound tests if the error is a kubernetes API error that indicates that the object
-// was not found or does not exist
+// IsNotFound 判断错误是否为 Kubernetes 资源不存在/已删除错误
 func IsNotFound(err error) bool {
 	return k8serrors.IsNotFound(err) || k8serrors.IsGone(err)
 }

@@ -1,7 +1,7 @@
 // License: OpenFaaS Community Edition (CE) EULA
 // Copyright (c) 2017,2019-2024 OpenFaaS Author(s)
 
-// Copyright (c) Alex Ellis 2017. All rights reserved\.
+// Copyright (c) Alex Ellis 2017. All rights reserved.
 // Copyright 2020 OpenFaaS Author(s)
 
 package k8s
@@ -16,9 +16,10 @@ import (
 	corelister "k8s.io/client-go/listers/core/v1"
 )
 
-// watchdogPort for the OpenFaaS function watchdog
+// watchdogPort OpenFaaS 函数守护进程默认端口
 const watchdogPort = 8080
 
+// NewFunctionLookup 创建函数地址查找器实例
 func NewFunctionLookup(ns string, lister corelister.EndpointsLister) *FunctionLookup {
 	return &FunctionLookup{
 		DefaultNamespace: ns,
@@ -28,6 +29,7 @@ func NewFunctionLookup(ns string, lister corelister.EndpointsLister) *FunctionLo
 	}
 }
 
+// FunctionLookup 函数服务地址解析器，通过 Kubernetes Endpoint 随机获取可用 Pod 地址
 type FunctionLookup struct {
 	DefaultNamespace string
 	EndpointLister   corelister.EndpointsLister
@@ -36,18 +38,21 @@ type FunctionLookup struct {
 	lock sync.RWMutex
 }
 
+// GetLister 获取指定命名空间的 Endpoint Lister
 func (f *FunctionLookup) GetLister(ns string) corelister.EndpointsNamespaceLister {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 	return f.Listers[ns]
 }
 
+// SetLister 设置指定命名空间的 Endpoint Lister
 func (f *FunctionLookup) SetLister(ns string, lister corelister.EndpointsNamespaceLister) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	f.Listers[ns] = lister
 }
 
+// getNamespace 从函数名称中提取命名空间
 func getNamespace(name, defaultNamespace string) string {
 	namespace := defaultNamespace
 	if strings.Contains(name, ".") {
@@ -56,6 +61,8 @@ func getNamespace(name, defaultNamespace string) string {
 	return namespace
 }
 
+// Resolve 解析函数名称为可访问的 URL 地址
+// 支持格式：function 或 function.namespace
 func (l *FunctionLookup) Resolve(name string) (url.URL, error) {
 	functionName := name
 	namespace := getNamespace(name, l.DefaultNamespace)
@@ -89,6 +96,7 @@ func (l *FunctionLookup) Resolve(name string) (url.URL, error) {
 		return url.URL{}, fmt.Errorf("no addresses in subset for \"%s.%s\"", functionName, namespace)
 	}
 
+	// 随机选择一个可用的 Pod 地址
 	target := rand.Intn(all)
 
 	serviceIP := svc.Subsets[0].Addresses[target].IP
@@ -103,6 +111,7 @@ func (l *FunctionLookup) Resolve(name string) (url.URL, error) {
 	return *urlRes, nil
 }
 
+// verifyNamespace 验证命名空间是否允许访问
 func (l *FunctionLookup) verifyNamespace(name string) error {
 	if name != "kube-system" {
 		return nil

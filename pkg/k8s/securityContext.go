@@ -9,12 +9,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// nonRootFunctionuserID is the user id that is set when DeployHandlerConfig.SetNonRootUser is true.
-// value >10000 per the suggestion from https://kubesec.io/basics/containers-securitycontext-runasuser/
+// SecurityContextUserID 启用非 root 用户时使用的 UID
+// 取值大于 10000，遵循 kubesec.io 安全建议
 const SecurityContextUserID = int64(12000)
 
-// ConfigureContainerUserID sets the UID to 12000 for the function Container.  Defaults to user
-// specified in image metadata if `SetNonRootUser` is `false`. Root == 0.
+// ConfigureContainerUserID 为函数容器设置运行用户 UID
+// SetNonRootUser 为 true 时使用 UID 12000，否则使用镜像默认用户（可能为 root）
 func (f *FunctionFactory) ConfigureContainerUserID(deployment *appsv1.Deployment) {
 	userID := SecurityContextUserID
 	var functionUser *int64
@@ -30,14 +30,10 @@ func (f *FunctionFactory) ConfigureContainerUserID(deployment *appsv1.Deployment
 	deployment.Spec.Template.Spec.Containers[0].SecurityContext.RunAsUser = functionUser
 }
 
-// ConfigureReadOnlyRootFilesystem will create or update the required settings and mounts to ensure
-// that the ReadOnlyRootFilesystem setting works as expected, meaning:
-//  1. when ReadOnlyRootFilesystem is true, the security context of the container will have ReadOnlyRootFilesystem also
-//     marked as true and a new `/tmp` folder mount will be added to the deployment spec
-//  2. when ReadOnlyRootFilesystem is false, the security context of the container will also have ReadOnlyRootFilesystem set
-//     to false and there will be no mount for the `/tmp` folder
-//
-// This method is safe for both create and update operations.
+// ConfigureReadOnlyRootFilesystem 配置容器根文件系统只读模式
+// 1. 启用时：设置 ReadOnlyRootFilesystem=true，并挂载临时目录 /tmp
+// 2. 禁用时：关闭只读模式，并移除 /tmp 挂载
+// 适用于创建与更新操作
 func (f *FunctionFactory) ConfigureReadOnlyRootFilesystem(request types.FunctionDeployment, deployment *appsv1.Deployment) {
 	if deployment.Spec.Template.Spec.Containers[0].SecurityContext != nil {
 		deployment.Spec.Template.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem = &request.ReadOnlyRootFilesystem
