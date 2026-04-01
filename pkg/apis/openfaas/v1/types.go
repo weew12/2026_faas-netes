@@ -1,9 +1,10 @@
 package v1
 
 import (
+	metav1 "k8s/apimachinery/pkg/apis/meta/v1"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +genclient
@@ -16,7 +17,7 @@ import (
 // +kubebuilder:printcolumn:name="Available",type=integer,JSONPath=`.status.availableReplicas`
 // +kubebuilder:printcolumn:name="Unavailable",type=integer,JSONPath=`.status.unavailableReplicas`,priority=1
 
-// Function describes an OpenFaaS function
+// Function OpenFaaS 函数资源定义
 type Function struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -27,40 +28,53 @@ type Function struct {
 	Status FunctionStatus `json:"status,omitempty"`
 }
 
-// FunctionSpec is the spec for a Function resource
+// FunctionSpec 函数资源规格定义
 type FunctionSpec struct {
+	// 函数名称
 	Name string `json:"name"`
 
+	// 函数容器镜像
 	Image string `json:"image"`
 	// +optional
+	// 函数处理入口（可选）
 	Handler string `json:"handler,omitempty"`
 	// +optional
+	// 注解（可选）
 	Annotations *map[string]string `json:"annotations,omitempty"`
 	// +optional
+	// 标签（可选）
 	Labels *map[string]string `json:"labels,omitempty"`
 	// +optional
+	// 环境变量（可选）
 	Environment *map[string]string `json:"environment,omitempty"`
 	// +optional
+	// 部署约束（可选）
 	Constraints []string `json:"constraints,omitempty"`
 	// +optional
+	// 密钥引用（可选）
 	Secrets []string `json:"secrets,omitempty"`
 	// +optional
+	// 资源限制（可选）
 	Limits *FunctionResources `json:"limits,omitempty"`
 	// +optional
+	// 资源请求（可选）
 	Requests *FunctionResources `json:"requests,omitempty"`
 	// +optional
+	// 根文件系统只读
 	ReadOnlyRootFilesystem bool `json:"readOnlyRootFilesystem"`
 }
 
-// FunctionResources is used to set CPU and memory limits and requests
+// FunctionResources 函数 CPU / 内存资源配置
 type FunctionResources struct {
+	// 内存配置
 	Memory string `json:"memory,omitempty"`
-	CPU    string `json:"cpu,omitempty"`
+	// CPU 配置
+	CPU string `json:"cpu,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// FunctionList is a list of Function resources
+// FunctionList 函数资源列表
 type FunctionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -68,40 +82,47 @@ type FunctionList struct {
 	Items []Function `json:"items"`
 }
 
+// FunctionStatus 函数运行状态
 type FunctionStatus struct {
-	// Conditions contains observations of the resource's state.
+	// Conditions 资源状态观测条件
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// +optional
+	// 期望副本数
 	Replicas int32 `json:"replicas,omitempty"`
 
 	// +optional
+	// 可用副本数
 	AvailableReplicas int32 `json:"availableReplicas,omitempty"`
 
 	// +optional
+	// 不可用副本数
 	UnavailableReplicas int32 `json:"unavailableReplicas,omitempty"`
 
+	// 控制器观测到的资源版本
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// OpenFaaS Profiles that are applied to this function
+	// 应用到当前函数的 OpenFaaS 配置文件
 	// +optional
 	Profiles []AppliedProfile `json:"profiles,omitempty"`
 }
 
-// AppliedProfile describes an OpenFaaS profile that is applied to the function
+// AppliedProfile 已应用到函数的配置文件描述
 type AppliedProfile struct {
-	// Reference to the applied Profile object
+	// 关联的 Profile 对象引用
 	ProfileRef ResourceRef `json:"profileRef"`
 
-	// The generation of the OpenFaaS profile object that was applied to the function
+	// 应用到函数的 Profile 资源版本
 	ObservedGeneration int64 `json:"observedGeneration"`
 }
 
-// ResourceRef references resources across namespaces
+// ResourceRef 跨命名空间资源引用
 type ResourceRef struct {
-	Name      string `json:"name,omitempty"`
+	// 资源名称
+	Name string `json:"name,omitempty"`
+	// 资源命名空间
 	Namespace string `json:"namespace,omitempty"`
 }
 
@@ -109,8 +130,7 @@ type ResourceRef struct {
 // +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Profile and ProfileSpec are used to customise the Pod template for
-// functions
+// Profile 用于自定义函数 Pod 模板的配置文件
 type Profile struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -118,99 +138,52 @@ type Profile struct {
 	Spec ProfileSpec `json:"spec"`
 }
 
-// ProfileSpec is an openfaas api extension that can be predefined and applied
-// to functions by annotating them with `com.openfaas.profile: name1,name2`
+// ProfileSpec OpenFaaS 扩展配置，可预定义并通过注解应用到函数
 type ProfileSpec struct {
-	// If specified, the function's pod tolerations.
-	//
-	// merged into the Pod Tolerations
-	//
+	// Pod 容忍配置
 	// +optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 
-	// RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used
-	// to run this pod.  If no RuntimeClass resource matches the named class, the pod will not be run.
-	// If unset or empty, the "legacy" RuntimeClass will be used, which is an implicit class with an
-	// empty definition that uses the default runtime handler.
-	// More info: https://git.k8s.io/enhancements/keps/sig-node/runtime-class.md
-	// This is a beta feature as of Kubernetes v1.14.
-	//
-	// copied to the Pod RunTimeClass, this will replace any existing value or previously
-	// applied Profile.
-	//
+	// 运行时类名
 	// +optional
 	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
 
-	// SecurityContext holds pod-level security attributes and common container settings.
-	// Optional: Defaults to empty.  See type description for default values of each field.
-	//
-	// each non-nil value will be merged into the function's PodSecurityContext, the value will
-	// replace any existing value or previously applied Profile
-	//
+	// Pod 安全上下文
 	// +optional
 	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
 
-	// If specified, the pod's scheduling constraints
-	//
-	// copied to the Pod Affinity, this will replace any existing value or previously
-	// applied Profile. We use a replacement strategy because it is not clear that merging
-	// affinities will actually produce a meaning Affinity definition, it would likely result in
-	// an impossible to satisfy constraint
-	//
+	// Pod 调度亲和性
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 
-	// TopologySpreadConstraints describes how a group of pods ought to spread across topology
-	// domains. The Kubernetes will schedule pods in a way which abides by the constraints.
-	//
-	// https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+	// 拓扑分布约束
 	// +optional
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
 
-	// DNSPolicy determines how DNS resolution is handled for Pods
-	//
-	// copied to the Pod DNSPolicy, this will replace any existing value or previously
-	// applied Profile.
-	//
-	// https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy
+	// DNS 策略
 	// +optional
 	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
 
-	// DNSConfig allows customizing DNS resolution for Pods. See type description for default values
-	// of each field.
-	//
-	// each non-nil value will be merged into the function's pods DNSConfig, the value will
-	// replace any existing value or previously applied Profile
-	//
-	// https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
+	// 自定义 DNS 配置
 	// +optional
 	DNSConfig *corev1.PodDNSConfig `json:"dnsConfig,omitempty"`
 
-	// Resources allows customizing resource requests and limits for the function container.
-	//
-	// Resource requests and limits keys are merged with the function container resources.
-	// This will replace any existing value or previously applied Profile for that key.
-	//
+	// 容器资源请求与限制
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// If specified, indicates the function pod's priority. "system-node-critical" and "system-cluster-critical" are two special keywords
-	// which indicate the highest priorities with the former being the highest priority.
-	// Any other name must be defined by creating a PriorityClass object with that name.
-	// If not specified, the function pod priority will be default or zero if there is no default.
-	//
+	// 优先级类名
 	// +optional
 	PriorityClassName string `json:"priorityClassName,omitempty"`
 
-	// Strategy allows customizing the deployment strategy for function deployments.
-	//
+	// 部署策略
 	// +optional
 	Strategy *appsv1.DeploymentStrategy `json:"strategy,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ProfileList is a list of Profiles
+// ProfileList Profile 资源列表
 type ProfileList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`

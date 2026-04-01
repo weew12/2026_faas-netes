@@ -8,29 +8,28 @@ import (
 	controller "github.com/openfaas/faas-netes/pkg/apis/iam"
 )
 
-// SchemeGroupVersion is group version used to register these objects
+// SchemeGroupVersion 用于注册API对象的组与版本标识
 var SchemeGroupVersion = schema.GroupVersion{Group: controller.GroupName, Version: "v1"}
 
-// Resource takes an unqualified resource and returns a Group qualified GroupResource
+// Resource 将资源名称转换为带组限定的GroupResource对象
 func Resource(resource string) schema.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
 var (
-	// localSchemeBuilder and AddToScheme will stay in k8s.io/kubernetes.
+	// localSchemeBuilder 与 AddToScheme 用于K8s资源类型注册
 	SchemeBuilder      runtime.SchemeBuilder
 	localSchemeBuilder = &SchemeBuilder
 	AddToScheme        = localSchemeBuilder.AddToScheme
 )
 
 func init() {
-	// We only register manually written functions here. The registration of the
-	// generated functions takes place in the generated files. The separation
-	// makes the code compile even when the generated files are missing.
+	// 仅在此注册手动编写的函数，生成代码的注册逻辑在自动生成文件中
+	// 分离设计可避免因缺少生成文件导致编译失败
 	localSchemeBuilder.Register(addKnownTypes)
 }
 
-// Adds the list of known types to api.Scheme.
+// addKnownTypes 将IAM API的已知资源类型注册到Scheme中
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&Policy{},
@@ -40,6 +39,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&JwtIssuer{},
 		&JwtIssuerList{},
 	)
+	// 向Scheme中添加当前API组与版本
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
 }
