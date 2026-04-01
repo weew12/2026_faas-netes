@@ -3,6 +3,8 @@
 
 // Copyright (c) Alex Ellis 2017. All rights reserved.
 // Copyright (c) OpenFaaS Author(s) 2020. All rights reserved.
+
+// Package config 提供服务启动配置读取与打印功能
 package config
 
 import (
@@ -11,11 +13,11 @@ import (
 	ftypes "github.com/openfaas/faas-provider/types"
 )
 
-// ReadConfig constitutes config from env variables
+// ReadConfig 从环境变量读取配置的实现结构体
 type ReadConfig struct {
 }
 
-// Read fetches config from environmental variables.
+// Read 从环境变量中获取并解析配置
 func (ReadConfig) Read(hasEnv ftypes.HasEnv) (BootstrapConfig, error) {
 	cfg := BootstrapConfig{}
 
@@ -26,9 +28,11 @@ func (ReadConfig) Read(hasEnv ftypes.HasEnv) (BootstrapConfig, error) {
 
 	cfg.FaaSConfig = *faasConfig
 
+	// 解析环境变量配置
 	httpProbe := ftypes.ParseBoolValue(hasEnv.Getenv("http_probe"), false)
 	setNonRootUser := ftypes.ParseBoolValue(hasEnv.Getenv("set_nonroot_user"), false)
 
+	// 获取函数默认命名空间
 	cfg.DefaultFunctionNamespace = ftypes.ParseString(hasEnv.Getenv("function_namespace"), "openfaas-fn")
 
 	cfg.HTTPProbe = httpProbe
@@ -37,29 +41,23 @@ func (ReadConfig) Read(hasEnv ftypes.HasEnv) (BootstrapConfig, error) {
 	return cfg, nil
 }
 
-// BootstrapConfig contains the server configuration values as well as default
-// Function configuration parameters that are passed to the function factory.
+// BootstrapConfig 服务启动配置，包含服务端配置与函数默认参数
 type BootstrapConfig struct {
-	// HTTPProbe when set to true switches readiness and liveness probe to
-	// access /_/health over HTTP instead of accessing /tmp/.lock.
+	// HTTPProbe 启用后通过 HTTP /_/health 检查健康，而非使用 /tmp/.lock 文件
 	HTTPProbe bool
 
-	// SetNonRootUser determines if the Function is deployed with a overridden
-	// non-root user id.  Currently this is preconfigured to the uid 12000.
+	// SetNonRootUser 是否使用非 root 用户（UID 12000）部署函数
 	SetNonRootUser bool
 
-	// DefaultFunctionNamespace defines which namespace in which Functions are deployed.
-	// Value is set via the function_namespace environment variable. If the
-	// variable is not set, it is set to "default".
+	// DefaultFunctionNamespace 函数默认部署命名空间，由 environment: function_namespace 配置
 	DefaultFunctionNamespace string
 
-	// FaaSConfig contains the configuration for the FaaSProvider
+	// FaaSConfig OpenFaaS 核心配置
 	FaaSConfig ftypes.FaaSConfig
 }
 
-// Fprint pretty-prints the config with the stdlib logger. One line per config value.
-// When the verbose flag is set to false, it prints the same output as prior to
-// the 0.12.0 release.
+// Fprint 使用日志格式化打印配置信息
+// verbose 为 true 时打印完整配置，false 时打印精简配置
 func (c BootstrapConfig) Fprint(verbose bool) {
 	log.Printf("HTTP Read Timeout: %s\n", c.FaaSConfig.GetReadTimeout())
 	log.Printf("HTTP Write Timeout: %s\n", c.FaaSConfig.WriteTimeout)
