@@ -59,6 +59,7 @@ func main() {
 	flag.Parse()
 
 	sha, release := version.GetReleaseInfo()
+	fmt.Print("\033[32m", "weew12 modified version\033[0m")
 	fmt.Printf(`faas-netes - Community Edition (CE)
 Warning: Commercial use limited to 60 days.
 Learn more: https://github.com/openfaas/faas/blob/master/EULA.md
